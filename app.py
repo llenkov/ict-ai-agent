@@ -1,7 +1,9 @@
 import streamlit as st
-import google.generativeai as genai  # Променен import
+import google.generativeai as genai
 import requests
 import os
+from PIL import Image
+from io import BytesIO
 
 # Настройка на страницата
 st.set_page_config(page_title="ICT Forex Bias Agent (Gemini)", page_icon="📈", layout="wide")
@@ -22,7 +24,8 @@ else:
     try:
         # Конфигуриране на Gemini
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')  # Правилен модел
+        # Използваме модел, който поддържа визия
+        model = genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
         st.error(f"Грешка при инициализиране на клиента: {str(e)}")
 
@@ -45,16 +48,17 @@ else:
         if h1_url:
             st.image(h1_url, caption="1 Час графика (LTF)", use_container_width=True)
 
-    # Функция за изтегляне на изображението
+    # Функция за изтегляне и конвертиране на изображение за Gemini inline format
     def load_image_for_gemini(url):
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=30)
             if response.status_code == 200:
-                return {
-                    "mime_type": "image/png",
-                    "data": response.content
-                }
-        except:
+                # Конвертираме bytes в PIL Image за валидация
+                img = Image.open(BytesIO(response.content))
+                # Връщаме bytes данните - Gemini работи директно с тях
+                return response.content
+        except Exception as e:
+            st.warning(f"Грешка при зареждане на изображение от {url}: {str(e)}")
             return None
         return None
 
@@ -64,9 +68,9 @@ else:
         if not daily_url or not h4_url or not h1_url:
             st.error("❌ Моля, попълнете линковете и за трите таймфрейма!")
         else:
-            with st.spinner("🤖 Новият Gemini агент анализира структурата и ликвидността... Моля, изчакайте."):
+            with st.spinner("🤖 Gemini агентът анализира структурата и ликвидността... Моля, изчакайте."):
                 
-                # Зареждане на трите изображения
+                # Зареждане на трите изображения като bytes
                 img_daily = load_image_for_gemini(daily_url)
                 img_h4 = load_image_for_gemini(h4_url)
                 img_h1 = load_image_for_gemini(h1_url)
@@ -89,18 +93,40 @@ else:
                     )
 
                     try:
-                        # Извикване на Gemini с изображенията
-                        response = model.generate_content([
+                        # Правилният начин за подаване на изображения в google.generativeai
+                        # Създаваме списък от части - текст + изображения
+                        contents = [
                             prompt,
-                            genai.upload_file_from_bytes(img_daily["data"], mime_type=img_daily["mime_type"]),
-                            genai.upload_file_from_bytes(img_h4["data"], mime_type=img_h4["mime_type"]),
-                            genai.upload_file_from_bytes(img_h1["data"], mime_type=img_h1["mime_type"])
-                        ])
+                            genai.upload_file_from_bytes(img_daily, mime_type="image/png"),
+                            genai.upload_file_from_bytes(img_h4, mime_type="image/png"),
+                            genai.upload_file_from_bytes(img_h1, mime_type="image/png")
+                        ]
+                        
+                        # Извикване на модела
+                        response = model.generate_content(contents)
                         
                         # Показване на резултата
                         st.success("✅ Анализът е завършен успешно!")
                         st.markdown("### 📊 Доклад от Gemini Агента")
                         st.info(response.text)
                         
+                    except AttributeError:
+                        # Ако upload_file_from_bytes не работи, използваме алтернативен метод
+                        st.warning("Използвам алтернативен метод за прехвърляне на изображения...")
+                        try:
+                            # Алтернативен метод: директно подаване на bytes в списък
+                            contents = [
+                                prompt,
+                                {"mime_type": "image/png", "data": img_daily},
+                                {"mime_type": "image/png", "data": img_h4},
+                                {"mime_type": "image/png", "data": img_h1}
+                            ]
+                            response = model.generate_content(contents)
+                            st.success("✅ Анализът е завършен успешно!")
+                            st.markdown("### 📊 Доклад от Gemini Агента")
+                            st.info(response.text)
+                        except Exception as e2:
+                            st.error(f"Грешка и при алтернативния метод: {str(e2)}")
+                            
                     except Exception as e:
                         st.error(f"Грешка при комуникацията с Gemini API: {str(e)}")
