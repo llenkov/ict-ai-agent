@@ -1,5 +1,5 @@
 import streamlit as st
-import google.genai as genai
+import google.generativeai as genai  # Променен import
 import requests
 import os
 
@@ -20,8 +20,9 @@ if not api_key:
     st.warning("⚠️ Моля, въведете вашия Gemini API Key в страничната лента, за да стартирате приложението.")
 else:
     try:
-        # Използваме новия, сигурен клиент на Google
-        client = genai.Client(api_key=api_key)
+        # Конфигуриране на Gemini
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')  # Правилен модел
     except Exception as e:
         st.error(f"Грешка при инициализиране на клиента: {str(e)}")
 
@@ -44,16 +45,15 @@ else:
         if h1_url:
             st.image(h1_url, caption="1 Час графика (LTF)", use_container_width=True)
 
-    # Функция за изтегляне на изображението в правилния за новия SDK формат
+    # Функция за изтегляне на изображението
     def load_image_for_gemini(url):
         try:
             response = requests.get(url)
             if response.status_code == 200:
-                # Новата библиотека изисква Part.from_bytes за изображения
-                return genai.types.Part.from_bytes(
-                    data=response.content,
-                    mime_type="image/png"
-                )
+                return {
+                    "mime_type": "image/png",
+                    "data": response.content
+                }
         except:
             return None
         return None
@@ -89,11 +89,13 @@ else:
                     )
 
                     try:
-                        # Извикване чрез новия метод на Google SDK
-                        response = client.models.generate_content(
-                            model='gemini-1.5-flash',
-                            contents=[prompt, img_daily, img_h4, img_h1]
-                        )
+                        # Извикване на Gemini с изображенията
+                        response = model.generate_content([
+                            prompt,
+                            genai.upload_file_from_bytes(img_daily["data"], mime_type=img_daily["mime_type"]),
+                            genai.upload_file_from_bytes(img_h4["data"], mime_type=img_h4["mime_type"]),
+                            genai.upload_file_from_bytes(img_h1["data"], mime_type=img_h1["mime_type"])
+                        ])
                         
                         # Показване на резултата
                         st.success("✅ Анализът е завършен успешно!")
