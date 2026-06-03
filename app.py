@@ -84,7 +84,7 @@ else:
 
                     try:
                         # Използваме модела gemini-1.5-flash (бърз, мултимодален и безплатен)
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
                         
                         # Подаваме подредени инструкциите и самите картинки
                         response = model.generate_content([
