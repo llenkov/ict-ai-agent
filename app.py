@@ -1,7 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+import google.genai as genai
 import requests
-from io import BytesIO
 import os
 
 # Настройка на страницата
@@ -10,18 +9,21 @@ st.set_page_config(page_title="ICT Forex Bias Agent (Gemini)", page_icon="📈",
 st.title("📈 ICT Multi-Timeframe Bias Agent (Безплатен с Gemini)")
 st.markdown("Този агент анализира Forex графики на база **ICT концепциите** (Daily, 4H, 1H) и определя пазарната посока (Bias).")
 
-# Инициализиране на Gemini API ключа
+# Инициализиране на Gemini API ключа от Secrets
 api_key = os.environ.get("GEMINI_API_KEY")
 
-# Странична лента за ръчно въвеждане (ако не е настроен в Secrets)
+# Странична лента за ръчно въвеждане (ако няма такъв в Secrets)
 if not api_key:
     api_key = st.sidebar.text_input("Въведи своя Gemini API Key:", type="password")
 
 if not api_key:
     st.warning("⚠️ Моля, въведете вашия Gemini API Key в страничната лента, за да стартирате приложението.")
 else:
-    # Конфигуриране на библиотеката на Google
-    genai.configure(api_key=api_key)
+    try:
+        # Използваме новия, сигурен клиент на Google
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        st.error(f"Грешка при инициализиране на клиента: {str(e)}")
 
     # Създаване на три колони за линковете
     st.subheader("🔗 Връзки към графиките от TradingView")
@@ -42,12 +44,16 @@ else:
         if h1_url:
             st.image(h1_url, caption="1 Час графика (LTF)", use_container_width=True)
 
-    # Функция за изтегляне на изображението и превръщането му във формат за Gemini
-    def load_image_from_url(url):
+    # Функция за изтегляне на изображението в правилния за новия SDK формат
+    def load_image_for_gemini(url):
         try:
             response = requests.get(url)
             if response.status_code == 200:
-                return {"mime_type": "image/png", "data": response.content}
+                # Новата библиотека изисква Part.from_bytes за изображения
+                return genai.types.Part.from_bytes(
+                    data=response.content,
+                    mime_type="image/png"
+                )
         except:
             return None
         return None
@@ -58,17 +64,17 @@ else:
         if not daily_url or not h4_url or not h1_url:
             st.error("❌ Моля, попълнете линковете и за трите таймфрейма!")
         else:
-            with st.spinner("🤖 БЕЗПЛАТНИЯТ Gemini агент анализира структурата и ликвидността... Моля, изчакайте."):
+            with st.spinner("🤖 Новият Gemini агент анализира структурата и ликвидността... Моля, изчакайте."):
                 
-                # Зареждане на трите изображения от линковете им
-                img_daily = load_image_from_url(daily_url)
-                img_h4 = load_image_from_url(h4_url)
-                img_h1 = load_image_from_url(h1_url)
+                # Зареждане на трите изображения
+                img_daily = load_image_for_gemini(daily_url)
+                img_h4 = load_image_for_gemini(h4_url)
+                img_h1 = load_image_for_gemini(h1_url)
                 
                 if not img_daily or not img_h4 or not img_h1:
-                    st.error("❌ Грешка при изтеглянето на някое от изображенията. Увери се, че линковете са правилни директни линкове от TradingView.")
+                    st.error("❌ Грешка при изтеглянето на изображенията. Увери се, че линковете са правилни.")
                 else:
-                    # Комбиниран промпт, съдържащ инструкциите
+                    # Промпт с инструкции
                     prompt = (
                         "You are an expert Forex trader specializing in ICT (Inner Circle Trader) concepts. "
                         "Your task is to perform a multi-timeframe analysis to determine the daily BIAS (Bullish/Bearish/Neutral). "
@@ -83,16 +89,11 @@ else:
                     )
 
                     try:
-                        # Използваме модела gemini-1.5-flash (бърз, мултимодален и безплатен)
-                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                        
-                        # Подаваме подредени инструкциите и самите картинки
-                        response = model.generate_content([
-                            prompt, 
-                            img_daily, 
-                            img_h4, 
-                            img_h1
-                        ])
+                        # Извикване чрез новия метод на Google SDK
+                        response = client.models.generate_content(
+                            model='gemini-1.5-flash',
+                            contents=[prompt, img_daily, img_h4, img_h1]
+                        )
                         
                         # Показване на резултата
                         st.success("✅ Анализът е завършен успешно!")
