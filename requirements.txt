@@ -1,5 +1,5 @@
 streamlit
 google-generativeai
-google-genai  # Най-новият SDK
 requests
 Pillow
+beautifulsoup4
